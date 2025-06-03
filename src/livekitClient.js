@@ -110,7 +110,7 @@ class LiveKitClient {
       logger.info(`Using SIP URI: ${sipUri}`);
       
       // Create a LiveKit room token for the SIP participant
-      const token = this.generateToken(roomName, `sip_${Date.now()}`, false);
+      const participantToken = this.generateToken(roomName, `sip_${Date.now()}`, false);
       
       // Use the LiveKit Cloud REST API for SIP egress
       // API v1 format - standard REST API
@@ -126,11 +126,15 @@ class LiveKitClient {
         enable_audio: true
       };
       
-      // Create a timestamp for HMAC authentication
-      const timestamp = Math.floor(Date.now() / 1000);
-      const hmacMessage = `${timestamp}:${JSON.stringify(egressBody)}`;
-      const hmac = require('crypto').createHmac('sha256', this.apiSecret);
-      const signature = hmac.update(hmacMessage).digest('hex');
+      // Generate a LiveKit access token with appropriate permissions
+      // This will be used for API authentication
+      const { AccessToken } = require('livekit-server-sdk');
+      const at = new AccessToken(this.apiKey, this.apiSecret, {
+        identity: 'api_call',
+        name: 'API Call'
+      });
+      at.addGrant({ roomJoin: true, room: roomName });
+      const token = at.toJwt();
 
       
       logger.info(`Request body: ${JSON.stringify(egressBody)}`);
@@ -140,7 +144,7 @@ class LiveKitClient {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `LIVEKIT-API-KEY:${this.apiKey}:${timestamp}:${signature}`
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify(egressBody)
       });
