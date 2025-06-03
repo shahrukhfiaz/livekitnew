@@ -77,110 +77,119 @@ class LiveKitClient {
       throw error;
     }
   }
+  
+  /**
+   * Format a phone number to E.164 format (with + prefix)
+   * @param {string} phoneNumber - The phone number to format
+   * @returns {string} - The formatted phone number
+   */
+  formatPhoneNumber(phoneNumber) {
+    // Remove any non-digit characters
+    let digits = phoneNumber.replace(/\D/g, '');
+    
+    // If the number doesn't have a + prefix, add it
+    // For US/Canada numbers without country code, add +1
+    if (!phoneNumber.startsWith('+')) {
+      if (digits.length === 10) { // US/Canada number without country code
+        digits = `1${digits}`;
+      }
+      return `+${digits}`;
+    }
+    
+    // Already has + prefix, just clean up any other non-digits
+    return phoneNumber.replace(/[^\d+]/g, '');
+  }
 
   /**
-   * Place an outbound SIP call using LiveKit
-   * @param {string} roomName - Room to connect the call to
-   * @param {string} phoneNumber - Target phone number to dial
-   * @returns {Promise<Object>} - Call details
+   * Place an outbound SIP call to the specified phone number
+   * @param {string} roomName - The LiveKit room name to connect to
+   * @param {string} phoneNumber - The phone number to call
+   * @returns {Promise<Object>} - The result of the call
    */
   async placeOutboundCall(roomName, phoneNumber) {
     try {
-      logger.info(`Placing outbound call to ${phoneNumber} in room ${roomName}`);
+      const formattedPhone = this.formatPhoneNumber(phoneNumber);
+      logger.info(`Placing outbound call to ${formattedPhone} in room ${roomName}`);
       
-      // Ensure room exists
-      await this.createOrGetRoom(roomName);
-      
-      // Get SIP domain from environment
-      const sipDomain = process.env.TWILIO_SIP_DOMAIN;
-      if (!sipDomain) {
-        throw new Error('TWILIO_SIP_DOMAIN environment variable is not set');
+      // We need to use the SIP Participant API, not the Egress API
+      // First, we need to know the SIP trunk ID (should be in environment variables)
+      const sipTrunkId = process.env.LIVEKIT_SIP_TRUNK_ID;
+      if (!sipTrunkId) {
+        throw new Error('LIVEKIT_SIP_TRUNK_ID environment variable is not set. Please create an outbound trunk first.');
       }
       
-      // Format phone number properly for Twilio SIP trunking
-      // Twilio SIP trunk expects E.164 format with + removed in the URI
-      let formattedPhone = phoneNumber;
-      if (!formattedPhone.startsWith('+')) {
-        formattedPhone = `+${formattedPhone}`;
-      }
+      // Create a LiveKit participant token
+      const participantIdentity = `sip_${Date.now()}`;
+      const participantToken = this.generateToken(roomName, participantIdentity, false);
       
-      // Format the SIP URI according to Twilio SIP trunk specifications
-      // The + should be removed from the SIP URI username part
-      const sipUri = `sip:${formattedPhone.replace(/^\+/, '')}@${sipDomain}`;
-      logger.info(`Using SIP URI: ${sipUri}`);
-      
-      // Create a LiveKit room token for the SIP participant
-      const participantToken = this.generateToken(roomName, `sip_${Date.now()}`, false);
-      
-      // Use the LiveKit Cloud REST API for SIP egress
-      // API v1 format - standard REST API
+      // Use the LiveKit SIP Participant API
       const baseUrl = this.url.replace('wss://', 'https://');
-      const egressUrl = `${baseUrl}/v1/room/${encodeURIComponent(roomName)}/sip_egress`;
+      const sipUrl = `${baseUrl}/v1/sip/participants`;
       
-      logger.info(`Making request to LiveKit SIP egress API: ${egressUrl}`);
+      logger.info(`Making request to LiveKit SIP Participant API: ${sipUrl}`);
       
-      // Prepare the request body according to LiveKit REST API documentation
-      // For REST API, authentication is handled through Authorization header, not in body
-      const egressBody = {
-        sip_uri: sipUri,
-        enable_audio: true
+      // Prepare the request body according to the CreateSIPParticipant API
+      const requestBody = {
+        sip_trunk_id: sipTrunkId,
+        sip_call_to: formattedPhone,  // Use the full E.164 format with + prefix
+        room_name: roomName,
+        participant_identity: participantIdentity,
+        participant_name: `Phone Call ${formattedPhone}`,
+        wait_until_answered: false,  // Don't block the API call
+        play_dialtone: true,         // Play dial tone while connecting
       };
       
-      // Generate a LiveKit access token with appropriate permissions
-      // This will be used for API authentication
+      // Generate a LiveKit access token for API authentication
       const { AccessToken } = require('livekit-server-sdk');
       const at = new AccessToken(this.apiKey, this.apiSecret, {
         identity: 'api_call',
         name: 'API Call'
       });
-      at.addGrant({ roomJoin: true, room: roomName });
       const token = at.toJwt();
 
+      logger.info(`Request body: ${JSON.stringify(requestBody)}`);
       
-      logger.info(`Request body: ${JSON.stringify(egressBody)}`);
-      
-      // Make the API request to LiveKit REST API with proper authentication
-      const response = await fetch(egressUrl, {
+      // Make the API request to LiveKit SIP Participant API
+      const response = await fetch(sipUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(egressBody)
+        body: JSON.stringify(requestBody)
       });
       
-      // Handle response status
+      // Handle API response
       if (!response.ok) {
         const errorText = await response.text();
-        logger.error(`LiveKit SIP egress failed with status ${response.status}: ${errorText}`);
-        throw new Error(`LiveKit SIP egress failed: ${response.status} ${response.statusText} - ${errorText}`);
+        logger.error(`LiveKit SIP Participant API error: ${response.status} ${response.statusText}`);
+        logger.error(`Error details: ${errorText}`);
+        throw new Error(`LiveKit SIP call failed: ${response.status} ${response.statusText} - ${errorText}`);
       }
       
-      // Parse the response text
-      let responseBody;
+      // Process the response
+      logger.info(`LiveKit SIP Participant API response: ${response.status} ${response.statusText}`);
       const responseText = await response.text();
+      logger.info(`Response body: ${responseText}`);
       
+      // Handle both JSON and non-JSON responses
+      let responseBody = {};
       try {
-        // Try to parse as JSON first
         responseBody = JSON.parse(responseText);
-        logger.info(`SIP egress response: ${JSON.stringify(responseBody)}`);
       } catch (e) {
-        // If not valid JSON, use the text response
-        logger.info(`SIP egress response (not JSON): ${responseText}`);
+        // If not JSON, just use the text
         responseBody = { message: responseText };
       }
       
-      // Construct a result object with all relevant details
-      const result = {
+      // Return success with details
+      return {
         status: 'success',
-        sipUri,
         roomName,
         phoneNumber: formattedPhone,
+        participantIdentity,
         timestamp: new Date().toISOString(),
         response: responseBody
       };
-      
-      return result;
     } catch (error) {
       logger.error(`Error placing outbound call: ${error.message}`);
       throw error;
