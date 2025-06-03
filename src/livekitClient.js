@@ -30,6 +30,7 @@ class LiveKitClient {
         room = await this.roomService.createRoom({
           name: roomName,
           emptyTimeout: 300, // 5 minutes
+          
           maxParticipants: 2  // Caller and bot
         });
       }
@@ -121,8 +122,19 @@ class LiveKitClient {
         throw new Error(`LiveKit SIP egress failed: ${response.status} ${response.statusText}`);
       }
       
-      const result = await response.json();
-      logger.info(`Outbound call placed successfully: ${JSON.stringify(result)}`);
+      // Handle text response from LiveKit API - it may not always return JSON
+      const responseText = await response.text();
+      logger.info(`Outbound call placed successfully: ${responseText}`);
+      
+      // Return a structured response object
+      const result = {
+        status: 'success',
+        message: responseText,
+        roomName,
+        phoneNumber,
+        timestamp: new Date().toISOString()
+      };
+      
       return result;
     } catch (error) {
       logger.error(`Error placing outbound call: ${error.message}`);
