@@ -91,33 +91,47 @@ class LiveKitClient {
       // Ensure room exists
       await this.createOrGetRoom(roomName);
       
-      // Prepare SIP URI for Twilio SIP Trunk
+      // Get SIP domain from environment
       const sipDomain = process.env.TWILIO_SIP_DOMAIN;
+      if (!sipDomain) {
+        throw new Error('TWILIO_SIP_DOMAIN environment variable is not set');
+      }
       
-      // Format phone number correctly - ensure it includes the + prefix
-      const formattedPhone = phoneNumber.startsWith('+') ? phoneNumber : `+${phoneNumber}`;
+      // Format phone number properly for Twilio SIP trunking
+      // Twilio SIP trunk expects E.164 format with + removed in the URI
+      let formattedPhone = phoneNumber;
+      if (!formattedPhone.startsWith('+')) {
+        formattedPhone = `+${formattedPhone}`;
+      }
       
-      // Format SIP URI according to Twilio's requirements
-      // Use the 'to' parameter format that Twilio expects
-      const sipUri = `sip:${formattedPhone}@${sipDomain}`;
+      // Format the SIP URI according to Twilio SIP trunk specifications
+      // The + should be removed from the SIP URI username part
+      const sipUri = `sip:${formattedPhone.replace(/^\+/, '')}@${sipDomain}`;
+      logger.info(`Using SIP URI: ${sipUri}`);
       
-      // Create the SIP participant using the appropriate method
-      // Instead of using createSIPParticipant, we need to use the egress API
-      // This works with LiveKit Cloud to create a SIP connection
-      // LiveKit API v1 format requires this specific endpoint structure
-      const egressUrl = `${this.url.replace('wss://', 'https://')}/twirp/livekit.Egress/StartSIPEgress`;
+      // Create a LiveKit room token for the SIP participant
+      const token = this.generateToken(roomName, `sip_${Date.now()}`, false);
       
-      // Format request body according to LiveKit API specifications
-      // See: https://docs.livekit.io/reference/server-sdk/rest/StartSIPEgress
+      // Use the standard LiveKit Cloud SIP egress API endpoint
+      // See: https://docs.livekit.io/guides/egress/sip-trunking/
+      const baseUrl = this.url.replace('wss://', 'https://');
+      const egressUrl = `${baseUrl}/twirp/livekit.Egress/StartSIPEgress`;
+      
+      logger.info(`Making request to LiveKit SIP egress API: ${egressUrl}`);
+      
+      // Prepare the request body according to LiveKit documentation
       const egressBody = {
         sip_uri: sipUri,
         room_name: roomName,
         enable_audio: true,
+        // Include full authentication credentials
         api_key: this.apiKey,
         api_secret: this.apiSecret
       };
       
-      // Make a direct HTTP request to the LiveKit egress API
+      logger.info(`Request body: ${JSON.stringify(egressBody)}`);
+      
+      // Make the API request to LiveKit
       const response = await fetch(egressUrl, {
         method: 'POST',
         headers: {
@@ -126,21 +140,35 @@ class LiveKitClient {
         body: JSON.stringify(egressBody)
       });
       
+      // Handle response status
       if (!response.ok) {
-        throw new Error(`LiveKit SIP egress failed: ${response.status} ${response.statusText}`);
+        const errorText = await response.text();
+        logger.error(`LiveKit SIP egress failed with status ${response.status}: ${errorText}`);
+        throw new Error(`LiveKit SIP egress failed: ${response.status} ${response.statusText} - ${errorText}`);
       }
       
-      // Handle text response from LiveKit API - it may not always return JSON
+      // Parse the response text
+      let responseBody;
       const responseText = await response.text();
-      logger.info(`Outbound call placed successfully: ${responseText}`);
       
-      // Return a structured response object
+      try {
+        // Try to parse as JSON first
+        responseBody = JSON.parse(responseText);
+        logger.info(`SIP egress response: ${JSON.stringify(responseBody)}`);
+      } catch (e) {
+        // If not valid JSON, use the text response
+        logger.info(`SIP egress response (not JSON): ${responseText}`);
+        responseBody = { message: responseText };
+      }
+      
+      // Construct a result object with all relevant details
       const result = {
         status: 'success',
-        message: responseText,
+        sipUri,
         roomName,
-        phoneNumber,
-        timestamp: new Date().toISOString()
+        phoneNumber: formattedPhone,
+        timestamp: new Date().toISOString(),
+        response: responseBody
       };
       
       return result;
