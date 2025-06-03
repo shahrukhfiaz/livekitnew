@@ -1,5 +1,6 @@
 const { AccessToken, RoomServiceClient } = require('livekit-server-sdk');
 const logger = require('./utils/logger');
+const fetch = require('node-fetch'); // Add this dependency for making HTTP requests
 
 class LiveKitClient {
   constructor() {
@@ -93,14 +94,34 @@ class LiveKitClient {
       const sipDomain = process.env.TWILIO_SIP_DOMAIN;
       const sipUri = `sip:${phoneNumber}@${sipDomain}`;
       
-      // Create the SIP participant through LiveKit's PSTN integration
-      const result = await this.roomService.createSIPParticipant({
-        roomName,
-        uri: sipUri,
+      // Create the SIP participant using the appropriate method
+      // Instead of using createSIPParticipant, we need to use the egress API
+      // This works with LiveKit Cloud to create a SIP connection
+      const egressUrl = `${this.url.replace('wss://', 'https://')}/egress/sip`;
+      
+      const egressBody = {
+        url: sipUri,
+        room: roomName,
         audio: true,
-        simulcast: false
+        protocol: "sip",
+        api_key: this.apiKey,
+        api_secret: this.apiSecret
+      };
+      
+      // Make a direct HTTP request to the LiveKit egress API
+      const response = await fetch(egressUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(egressBody)
       });
       
+      if (!response.ok) {
+        throw new Error(`LiveKit SIP egress failed: ${response.status} ${response.statusText}`);
+      }
+      
+      const result = await response.json();
       logger.info(`Outbound call placed successfully: ${JSON.stringify(result)}`);
       return result;
     } catch (error) {
