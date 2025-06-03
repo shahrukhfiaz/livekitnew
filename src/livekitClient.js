@@ -112,30 +112,35 @@ class LiveKitClient {
       // Create a LiveKit room token for the SIP participant
       const token = this.generateToken(roomName, `sip_${Date.now()}`, false);
       
-      // Use the standard LiveKit Cloud SIP egress API endpoint
-      // See: https://docs.livekit.io/guides/egress/sip-trunking/
+      // Use the LiveKit Cloud REST API for SIP egress
+      // API v1 format - standard REST API
       const baseUrl = this.url.replace('wss://', 'https://');
-      const egressUrl = `${baseUrl}/twirp/livekit.Egress/StartSIPEgress`;
+      const egressUrl = `${baseUrl}/v1/room/${encodeURIComponent(roomName)}/sip_egress`;
       
       logger.info(`Making request to LiveKit SIP egress API: ${egressUrl}`);
       
-      // Prepare the request body according to LiveKit documentation
+      // Prepare the request body according to LiveKit REST API documentation
+      // For REST API, authentication is handled through Authorization header, not in body
       const egressBody = {
         sip_uri: sipUri,
-        room_name: roomName,
-        enable_audio: true,
-        // Include full authentication credentials
-        api_key: this.apiKey,
-        api_secret: this.apiSecret
+        enable_audio: true
       };
+      
+      // Create a timestamp for HMAC authentication
+      const timestamp = Math.floor(Date.now() / 1000);
+      const hmacMessage = `${timestamp}:${JSON.stringify(egressBody)}`;
+      const hmac = require('crypto').createHmac('sha256', this.apiSecret);
+      const signature = hmac.update(hmacMessage).digest('hex');
+
       
       logger.info(`Request body: ${JSON.stringify(egressBody)}`);
       
-      // Make the API request to LiveKit
+      // Make the API request to LiveKit REST API with proper authentication
       const response = await fetch(egressUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `LIVEKIT-API-KEY:${this.apiKey}:${timestamp}:${signature}`
         },
         body: JSON.stringify(egressBody)
       });
