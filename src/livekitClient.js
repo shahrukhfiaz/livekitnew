@@ -93,18 +93,26 @@ class LiveKitClient {
       
       // Prepare SIP URI for Twilio SIP Trunk
       const sipDomain = process.env.TWILIO_SIP_DOMAIN;
-      const sipUri = `sip:${phoneNumber}@${sipDomain}`;
+      
+      // Format phone number correctly - ensure it includes the + prefix
+      const formattedPhone = phoneNumber.startsWith('+') ? phoneNumber : `+${phoneNumber}`;
+      
+      // Format SIP URI according to Twilio's requirements
+      // Use the 'to' parameter format that Twilio expects
+      const sipUri = `sip:${formattedPhone}@${sipDomain}`;
       
       // Create the SIP participant using the appropriate method
       // Instead of using createSIPParticipant, we need to use the egress API
       // This works with LiveKit Cloud to create a SIP connection
-      const egressUrl = `${this.url.replace('wss://', 'https://')}/egress/sip`;
+      // LiveKit API v1 format requires this specific endpoint structure
+      const egressUrl = `${this.url.replace('wss://', 'https://')}/twirp/livekit.Egress/StartSIPEgress`;
       
+      // Format request body according to LiveKit API specifications
+      // See: https://docs.livekit.io/reference/server-sdk/rest/StartSIPEgress
       const egressBody = {
-        url: sipUri,
-        room: roomName,
-        audio: true,
-        protocol: "sip",
+        sip_uri: sipUri,
+        room_name: roomName,
+        enable_audio: true,
         api_key: this.apiKey,
         api_secret: this.apiSecret
       };
