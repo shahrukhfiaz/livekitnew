@@ -8,12 +8,14 @@
 # pkgs.pkg-config helps find installed libraries
 # pkgs.openssl is a common dependency for native modules
 nixPkgs = [
-  "pkgs.nodejs_22",  # Ensures Node.js and npm are available
-  "pkgs.stdenv.cc",
-  "pkgs.python3",
-  "pkgs.gnumake",
-  "pkgs.pkg-config",
-  "pkgs.openssl"
+  "pkgs.nodejs_22",             # Ensures Node.js and npm are available
+  "pkgs.stdenv.cc",             # C/C++ compiler environment
+  "pkgs.python3",               # Python, often needed by gyp
+  "pkgs.gnumake",               # make utility
+  "pkgs.pkg-config",            # Helps find installed libraries
+  "pkgs.openssl",               # Common dependency
+  "pkgs.nodePackages.node-gyp", # For compiling native addons
+  "pkgs.nodePackages.node-pre-gyp" # Tool used by wrtc for prebuilt binaries
 ]
 
 # You can also specify providers here if needed, for example:
