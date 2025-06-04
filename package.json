@@ -18,7 +18,8 @@
     "uuid": "^9.0.0",
     "winston": "^3.10.0",
     "ws": "^8.14.2",
-    "livekit-client": "^2.0.5"
+    "livekit-client": "^2.0.5",
+    "wrtc": "^0.4.7"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"

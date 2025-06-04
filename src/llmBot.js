@@ -1,3 +1,4 @@
+require('wrtc'); // Polyfill for WebRTC in Node.js
 const { OpenAI } = require('openai');
 const logger = require('./utils/logger');
 // Assuming livekit-client can be used in Node.js environment for the bot's client-side room interactions
