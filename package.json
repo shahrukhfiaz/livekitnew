@@ -22,7 +22,8 @@
     "wrtc": "^0.4.7"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1"
+    "nodemon": "^3.1.4",
+    "node-pre-gyp": "^0.17.0"
   },
   "engines": {
     "node": ">=18.0.0"
