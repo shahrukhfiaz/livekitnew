@@ -116,7 +116,10 @@ app.post('/api/calls/:callId/end', async (req, res) => {
  */
 app.post('/webhooks/livekit/sip-call', async (req, res) => {
   // Log the entire incoming request body for debugging
-  logger.info('Received LiveKit webhook:');
+  logger.info('Received LiveKit webhook POST request');
+  logger.info(`Request Content-Type: ${req.headers['content-type']}`);
+  
+  logger.info('Inspecting req.body:');
   logger.info(`Event Type: ${req.body.event}`);
   logger.info(`Full Payload: ${JSON.stringify(req.body, null, 2)}`);
 
