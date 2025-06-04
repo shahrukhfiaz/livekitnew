@@ -7,7 +7,14 @@
 # pkgs.gnumake provides the 'make' utility
 # pkgs.pkg-config helps find installed libraries
 # pkgs.openssl is a common dependency for native modules
-nixPkgs = ["pkgs.stdenv.cc", "pkgs.python3", "pkgs.gnumake", "pkgs.pkg-config", "pkgs.openssl"]
+nixPkgs = [
+  "pkgs.nodejs_22",  # Ensures Node.js and npm are available
+  "pkgs.stdenv.cc",
+  "pkgs.python3",
+  "pkgs.gnumake",
+  "pkgs.pkg-config",
+  "pkgs.openssl"
+]
 
 # You can also specify providers here if needed, for example:
 # [providers.node]
