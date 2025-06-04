@@ -1,5 +1,10 @@
 const { OpenAI } = require('openai');
 const logger = require('./utils/logger');
+// Assuming livekit-client can be used in Node.js environment for the bot's client-side room interactions
+// You might need to install it: npm install livekit-client
+// Or use parts of livekit-server-sdk if appropriate for a non-media-participating orchestrator bot.
+// For a bot that sends/receives audio, livekit-client is typical.
+const { Room, RoomEvent, RemoteParticipant, RemoteTrack, RemoteTrackPublication } = require('livekit-client'); 
 
 class LLMBot {
   constructor() {
@@ -7,8 +12,12 @@ class LLMBot {
       apiKey: process.env.OPENAI_API_KEY,
     });
     this.conversations = new Map(); // Store conversation history by callId
+    this.activeRooms = new Map(); // Store active LiveKit room connections by callId
     this.systemPrompt = process.env.LLM_SYSTEM_PROMPT || 
       "You are an AI assistant on a phone call. Be helpful, concise, and conversational. Ask questions when needed.";
+    
+    // LiveKit URL should be in your .env
+    this.livekitUrl = process.env.LIVEKIT_URL;
   }
 
   /**
@@ -98,11 +107,76 @@ class LLMBot {
    * End a conversation session and clean up resources
    * @param {string} callId - Call identifier to end
    */
-  endConversation(callId) {
+  async joinRoom(callId, roomName, botIdentity, token) {
+    if (!this.livekitUrl) {
+      logger.error(`[${callId}] LiveKit URL not configured. Cannot join room.`);
+      throw new Error('LiveKit URL not configured.');
+    }
+    if (this.activeRooms.has(callId)) {
+      logger.warn(`[${callId}] Bot is already in room ${roomName}.`);
+      return this.activeRooms.get(callId);
+    }
+
+    logger.info(`[${callId}] Bot ${botIdentity} attempting to join room: ${roomName}`);
+    const room = new Room();
+    this.activeRooms.set(callId, room);
+
+    try {
+      // Setup room event listeners
+      room
+        .on(RoomEvent.Connected, () => {
+          logger.info(`[${callId}] Bot successfully connected to room: ${roomName}`);
+          // TODO: Publish bot's audio track for TTS output
+          // TODO: Setup subscriptions to other participants' audio tracks
+        })
+        .on(RoomEvent.Disconnected, () => {
+          logger.info(`[${callId}] Bot disconnected from room: ${roomName}`);
+          this.activeRooms.delete(callId);
+        })
+        .on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
+          logger.info(`[${callId}] Track subscribed: ${track.sid} from ${participant.identity}`);
+          // if (track.kind === 'audio' && participant.identity !== botIdentity) {
+          //   // This is audio from the other participant (e.g., the PSTN caller)
+          //   // TODO: Forward this audio to Deepgram
+          //   track.on('message', (message) => { /* process audio data */ });
+          // }
+        });
+
+      await room.connect(this.livekitUrl, token);
+      logger.info(`[${callId}] Bot ${botIdentity} connection process initiated for room ${roomName}.`);
+      return room;
+    } catch (error) {
+      logger.error(`[${callId}] Error connecting bot to room ${roomName}: ${error.message}`, error.stack);
+      this.activeRooms.delete(callId);
+      throw error;
+    }
+  }
+
+  /**
+   * Leave a LiveKit room.
+   * @param {string} callId - The call ID associated with the room session.
+   */
+  async leaveRoom(callId) {
+    if (this.activeRooms.has(callId)) {
+      const room = this.activeRooms.get(callId);
+      logger.info(`[${callId}] Bot disconnecting from room: ${room.name}`);
+      await room.disconnect();
+      this.activeRooms.delete(callId); // Ensure cleanup even if disconnect event is missed
+    } else {
+      logger.warn(`[${callId}] Bot not in any room to leave.`);
+    }
+  }
+
+  /**
+   * End a conversation session and clean up resources
+   * @param {string} callId - Call identifier to end
+   */
+  async endConversation(callId) { // Made async to allow await for leaveRoom
     if (this.conversations.has(callId)) {
       logger.info(`Ending conversation for call: ${callId}`);
       this.conversations.delete(callId);
     }
+    await this.leaveRoom(callId); // Ensure bot leaves the room
   }
 }
 

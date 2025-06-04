@@ -16,57 +16,91 @@ class CallManager {
    * @param {string} callerIdentity - Identity of the caller
    * @returns {Promise<Object>} - Call details
    */
-  async handleInboundCall(roomName, callerIdentity) {
+  async handleInboundCall(callData) { // Changed to accept a single object
+    const { roomName, callerId, sipParticipantIdentity, webhookPayload } = callData;
+    let callIdForErrorHandling; // To store callId if generated
+
     try {
-      // Generate a unique call ID
       const callId = uuidv4();
-      logger.info(`Handling inbound call from ${callerIdentity} in room ${roomName}, call ID: ${callId}`);
+      callIdForErrorHandling = callId; // Store for potential error handling
+      // Use callerId from webhook payload for logging, if available
+      logger.info(`Handling inbound call from ${callerId || 'Unknown Caller'} for room ${roomName}, SIP Participant: ${sipParticipantIdentity}, call ID: ${callId}`);
       
-      // Generate a unique bot identity for this call
       const botIdentity = `bot-${callId}`;
       
-      // Create or get the LiveKit room
-      await livekitClient.createOrGetRoom(roomName);
+      // Ensure the room exists (LiveKit dispatch rule should create it based on prefix)
+      // livekitClient.createOrGetRoom might still be useful if you want to ensure/verify
+      await livekitClient.createOrGetRoom(roomName); 
       
-      // Generate a token for the bot participant
       const botToken = livekitClient.generateToken(roomName, botIdentity, true);
       
-      // Initialize the LLM conversation
       llmBot.initializeConversation(callId, {
         type: 'inbound',
-        caller: callerIdentity,
+        caller: callerId || sipParticipantIdentity, // Prefer callerId, fallback to SIP identity
         roomName,
+        webhookPayload // Store webhook payload for context if needed
       });
       
-      // Add a welcome system message to LLM
       llmBot.addSystemMessage(callId, 
-        `This is an inbound call from ${callerIdentity}. Be welcoming and helpful.`);
+        `This is an inbound call from ${callerId || 'Unknown Caller'}. Be welcoming and helpful.`);
       
-      // Store call details
       this.activeCalls.set(callId, {
         id: callId,
         roomName,
         type: 'inbound',
-        callerIdentity,
+        callerIdentity: callerId || sipParticipantIdentity,
+        sipParticipantIdentity,
         botIdentity,
-        botToken,
+        botToken, // Storing botToken here
         startTime: new Date(),
-        status: 'initializing',
+        status: 'initializing_bot', // New status: bot is being initialized
+        webhookPayload,
       });
       
-      // Track bot participant for this room
       this.botParticipants.set(roomName, botIdentity);
       
-      logger.info(`Inbound call handling initialized, call ID: ${callId}`);
+      // CRUCIAL STEP: Instruct the bot to join the room
+      // This assumes llmBot has a method like joinRoom.
+      // The implementation of llmBot.joinRoom will use the botToken to connect.
+      try {
+        logger.info(`Instructing bot ${botIdentity} to join room ${roomName} for call ${callId}.`);
+        await llmBot.joinRoom(callId, roomName, botIdentity, botToken); // Pass callId for context
+        // Update status after bot is instructed to join
+        const call = this.activeCalls.get(callId);
+        if (call) {
+          call.status = 'bot_joining';
+          this.activeCalls.set(callId, call);
+        }
+        logger.info(`Bot ${botIdentity} join instruction sent for room ${roomName}.`);
+      } catch (botJoinError) {
+        logger.error(`Error instructing bot to join room ${roomName} for call ${callId}: ${botJoinError.message}`, botJoinError.stack);
+        // Update status to reflect bot join failure
+        const call = this.activeCalls.get(callId);
+        if (call) {
+          call.status = 'bot_join_failed';
+          this.activeCalls.set(callId, call);
+        }
+        throw botJoinError; // Re-throw to be caught by the outer try-catch
+      }
+      
+      logger.info(`Inbound call handling initialized for bot to join, call ID: ${callId}`);
       
       return {
         callId,
         roomName,
         botIdentity,
-        botToken,
+        // botToken is sensitive, maybe don't return it from webhook response in server.js
       };
     } catch (error) {
-      logger.error(`Error handling inbound call: ${error.message}`);
+      logger.error(`Error handling inbound call in CallManager for room ${roomName}: ${error.message}`, error.stack);
+      // Ensure call status reflects failure if an error occurs before/during bot setup
+      if (callIdForErrorHandling) {
+        const call = this.activeCalls.get(callIdForErrorHandling);
+        if (call && (call.status === 'initializing_bot' || call.status === 'bot_joining')) {
+            call.status = 'setup_failed';
+            this.activeCalls.set(call.id, call);
+        }
+      }
       throw error;
     }
   }

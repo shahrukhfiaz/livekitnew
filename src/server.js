@@ -115,25 +115,59 @@ app.post('/api/calls/:callId/end', async (req, res) => {
  * POST /webhooks/livekit/sip-call
  */
 app.post('/webhooks/livekit/sip-call', async (req, res) => {
+  // Log the entire incoming request body for debugging
+  logger.info('Received LiveKit webhook:');
+  logger.info(`Event Type: ${req.body.event}`);
+  logger.info(`Full Payload: ${JSON.stringify(req.body, null, 2)}`);
+
   try {
-    const { roomName, participantIdentity } = req.body;
+    const event = req.body.event;
     
-    if (!roomName || !participantIdentity) {
-      return res.status(400).json({ error: 'Room name and participant identity are required' });
+    // TODO: Confirm the actual event name from LiveKit for SIP dispatch.
+    // Common events could be 'room_started' if the dispatch rule creates the room,
+    // or a more specific SIP event like 'sip_dispatch'.
+    // For this example, we'll assume 'room_started' or a generic SIP event.
+    // You might also want to check req.body.sip for SIP-specific details.
+
+    if (event === 'room_started' || (req.body.sip && req.body.room)) { // Adjust this condition based on actual event
+      const roomName = req.body.room?.name;
+      // The participantIdentity from a LiveKit webhook for an incoming SIP call
+      // is typically the identity of the SIP trunk participant itself, not your bot.
+      // Let's capture it if available, it might be useful for callManager.
+      const sipParticipantIdentity = req.body.participant?.identity || req.body.sip?.participant_identity;
+      const callerId = req.body.sip?.from_display_name || req.body.sip?.from; // Example of extracting caller ID
+
+      if (!roomName) {
+        logger.error('Webhook received but roomName is missing in payload.');
+        return res.status(400).json({ error: 'Room name is missing in webhook payload.' });
+      }
+
+      logger.info(`Processing inbound call for room: ${roomName}, SIP Participant: ${sipParticipantIdentity}, Caller: ${callerId}`);
+      
+      // Pass relevant information to callManager.
+      // callManager will be responsible for getting the bot into this room.
+      const callDetails = await callManager.handleInboundCall({
+        roomName,
+        sipParticipantIdentity, // Identity of the PSTN leg
+        callerId,              // Who is calling
+        webhookPayload: req.body // Pass the full payload if callManager needs more details
+      });
+      
+      res.json({
+        success: true,
+        callId: callDetails.callId,
+        roomName: callDetails.roomName,
+        botIdentity: callDetails.botIdentity // This should be the identity of YOUR bot
+      });
+
+    } else {
+      logger.warn(`Received unhandled LiveKit event type: ${event}`);
+      res.status(200).json({ message: 'Webhook received, but event not handled by this logic.' });
     }
-    
-    // Handle the inbound call
-    const callDetails = await callManager.handleInboundCall(roomName, participantIdentity);
-    
-    res.json({
-      success: true,
-      callId: callDetails.callId,
-      roomName: callDetails.roomName,
-      botIdentity: callDetails.botIdentity
-    });
+
   } catch (error) {
-    logger.error(`Error handling inbound SIP call: ${error.message}`);
-    res.status(500).json({ error: error.message });
+    logger.error(`Error handling inbound SIP call webhook: ${error.message}`, error.stack);
+    res.status(500).json({ error: 'Error processing webhook: ' + error.message });
   }
 });
 
