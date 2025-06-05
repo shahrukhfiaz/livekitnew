@@ -1,21 +1,30 @@
-require('@livekit/rtc-node'); // Polyfill for WebRTC in Node.js via LiveKit
-
-const { OpenAI } = require('openai');
-const logger = require('./utils/logger');
-
 // LiveKit RTC Diagnostic Block
+const lkrtc = require('@livekit/rtc-node'); // Polyfill for WebRTC in Node.js via LiveKit
+logger.info(`[LK_RTC_DIAGNOSTIC] Loaded @livekit/rtc-node module. Type: ${typeof lkrtc}`);
+if (lkrtc && typeof lkrtc === 'object') {
+  logger.info(`[LK_RTC_DIAGNOSTIC] @livekit/rtc-node exports: ${Object.keys(lkrtc).join(', ')}`);
+  if (lkrtc.RTCPeerConnection) {
+    logger.info('[LK_RTC_DIAGNOSTIC] RTCPeerConnection IS available as a direct export from @livekit/rtc-node.');
+  } else {
+    logger.warn('[LK_RTC_DIAGNOSTIC] RTCPeerConnection is NOT available as a direct export from @livekit/rtc-node.');
+  }
+}
+
 try {
   if (globalThis.RTCPeerConnection) {
     const pc = new globalThis.RTCPeerConnection({ iceServers: [] });
-    logger.info('[LK_RTC_DIAGNOSTIC] Successfully created RTCPeerConnection instance via @livekit/rtc.');
+    logger.info('[LK_RTC_DIAGNOSTIC] Successfully created RTCPeerConnection instance from globalThis via @livekit/rtc-node.');
     pc.close(); // Clean up the test peer connection
   } else {
-    logger.error('[LK_RTC_DIAGNOSTIC] globalThis.RTCPeerConnection is not defined after requiring @livekit/rtc.');
+    logger.error('[LK_RTC_DIAGNOSTIC] globalThis.RTCPeerConnection is still not defined after requiring @livekit/rtc-node.');
   }
 } catch (e) {
-  logger.error('[LK_RTC_DIAGNOSTIC] Failed to create RTCPeerConnection instance via @livekit/rtc:', e);
+  logger.error('[LK_RTC_DIAGNOSTIC] Failed to create RTCPeerConnection instance from globalThis via @livekit/rtc-node:', e);
 }
 // End LiveKit RTC Diagnostic Block
+
+const { OpenAI } = require('openai');
+const logger = require('./utils/logger');
 // Assuming livekit-client can be used in Node.js environment for the bot's client-side room interactions
 // You might need to install it: npm install livekit-client
 // Or use parts of livekit-server-sdk if appropriate for a non-media-participating orchestrator bot.
