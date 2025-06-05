@@ -1,18 +1,21 @@
-require('wrtc'); // Polyfill for WebRTC in Node.js
+require('@livekit/rtc'); // Polyfill for WebRTC in Node.js via LiveKit
 
 const { OpenAI } = require('openai');
 const logger = require('./utils/logger');
 
-// WRTC Diagnostic Block
+// LiveKit RTC Diagnostic Block
 try {
-  // RTCPeerConnection should be globally available after 'require("wrtc")'
-  const pc = new RTCPeerConnection({ iceServers: [] }); 
-  logger.info('[WRTC_DIAGNOSTIC] Successfully created RTCPeerConnection instance from wrtc.');
-  pc.close(); // Clean up the test peer connection
+  if (globalThis.RTCPeerConnection) {
+    const pc = new globalThis.RTCPeerConnection({ iceServers: [] });
+    logger.info('[LK_RTC_DIAGNOSTIC] Successfully created RTCPeerConnection instance via @livekit/rtc.');
+    pc.close(); // Clean up the test peer connection
+  } else {
+    logger.error('[LK_RTC_DIAGNOSTIC] globalThis.RTCPeerConnection is not defined after requiring @livekit/rtc.');
+  }
 } catch (e) {
-  logger.error('[WRTC_DIAGNOSTIC] Failed to create RTCPeerConnection instance from wrtc:', e);
+  logger.error('[LK_RTC_DIAGNOSTIC] Failed to create RTCPeerConnection instance via @livekit/rtc:', e);
 }
-// End WRTC Diagnostic Block
+// End LiveKit RTC Diagnostic Block
 // Assuming livekit-client can be used in Node.js environment for the bot's client-side room interactions
 // You might need to install it: npm install livekit-client
 // Or use parts of livekit-server-sdk if appropriate for a non-media-participating orchestrator bot.
