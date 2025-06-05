@@ -1,3 +1,6 @@
+const logger = require('./utils/logger');
+const { OpenAI } = require('openai');
+
 // LiveKit RTC Diagnostic Block
 const lkrtc = require('@livekit/rtc-node'); // Polyfill for WebRTC in Node.js via LiveKit
 logger.info(`[LK_RTC_DIAGNOSTIC] Loaded @livekit/rtc-node module. Type: ${typeof lkrtc}`);
@@ -22,9 +25,6 @@ try {
   logger.error('[LK_RTC_DIAGNOSTIC] Failed to create RTCPeerConnection instance from globalThis via @livekit/rtc-node:', e);
 }
 // End LiveKit RTC Diagnostic Block
-
-const { OpenAI } = require('openai');
-const logger = require('./utils/logger');
 // Assuming livekit-client can be used in Node.js environment for the bot's client-side room interactions
 // You might need to install it: npm install livekit-client
 // Or use parts of livekit-server-sdk if appropriate for a non-media-participating orchestrator bot.
