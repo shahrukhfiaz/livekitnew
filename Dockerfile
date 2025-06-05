@@ -1,16 +1,23 @@
-# Use an official Node.js runtime as a parent image
-FROM node:18-bullseye-slim
+# syntax = docker/dockerfile:1
+
+# Use Node.js 18 bullseye-slim as the base image
+ARG NODE_VERSION=18
+FROM node:${NODE_VERSION}-bullseye-slim AS base
+
+LABEL fly_launch_runtime="Node.js"
 
 # Set the working directory in the container
 WORKDIR /app
 
+# Set production environment
+ENV NODE_ENV="production"
+
+# Throw-away build stage to reduce size of final image
+FROM base AS build
+
 # Install system dependencies required for wrtc and other native modules
-# build-essential includes gcc, g++, make
-# python3 is needed for node-gyp
-# pkg-config helps find installed libraries
-# libopus-dev, libexpat1-dev, libnspr4-dev, libnss3-dev, libasound2-dev are common for WebRTC
-# libavdevice-dev might be needed for some audio/video device access (though less common for server-side wrtc)
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update -qq && \
+    apt-get install --no-install-recommends -y \
     build-essential \
     python3 \
     make \
@@ -20,26 +27,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libnspr4-dev \
     libnss3-dev \
     libasound2-dev \
-    # libavdevice-dev \
-    # Add any other specific system dependencies your project might need
     && rm -rf /var/lib/apt/lists/*
 
-# Copy package.json and package-lock.json (or npm-shrinkwrap.json) to leverage Docker cache
+# Copy package.json and package-lock.json (if available)
 COPY package*.json ./
 
-# Install app dependencies
-# If you have a clean slate and no node_modules, use npm ci for faster, more reliable builds
-# RUN npm ci --only=production
+# Install node modules
 RUN npm install
 
-# Bundle app source
+# Copy application code
 COPY . .
 
-# Your app binds to port 3000, but Fly.io expects 8080 by default.
-# We'll expose 3000 and rely on fly.toml to map external 8080 to internal 3000 if needed,
-# or you can change your app to listen on process.env.PORT (which Fly sets to 8080).
-# For now, let's assume your app listens on 3000 as per your logs.
+# Final stage for app image
+FROM base
+
+# Copy built application from the build stage
+COPY --from=build /app /app
+
+# Expose port 3000 (your app listens on this port)
 EXPOSE 3000
 
-# Define the command to run your app
+# Start the server by default
 CMD [ "npm", "run", "start" ]
