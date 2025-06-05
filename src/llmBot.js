@@ -1,53 +1,8 @@
 const logger = require('./utils/logger');
 const { OpenAI } = require('openai');
 
-// LiveKit RTC Diagnostic Block
-const lkrtc = require('@livekit/rtc-node');
-logger.info(`[LK_RTC_DIAGNOSTIC] Loaded @livekit/rtc-node module. Type: ${typeof lkrtc}`);
-
-if (lkrtc && typeof lkrtc === 'object') {
-  const exports = Object.keys(lkrtc);
-  logger.info(`[LK_RTC_DIAGNOSTIC] @livekit/rtc-node exports: ${exports.join(', ')}`);
-
-  const webrtcGlobals = ['RTCPeerConnection', 'RTCSessionDescription', 'RTCIceCandidate'];
-  let foundGlobals = false;
-
-  for (const key of exports) {
-    if (webrtcGlobals.includes(key)) {
-      logger.info(`[LK_RTC_DIAGNOSTIC] Found potential global ${key} as a direct export of @livekit/rtc-node.`);
-      foundGlobals = true;
-    }
-    if (lkrtc[key] && typeof lkrtc[key] === 'object') {
-      for (const subKey of Object.keys(lkrtc[key])) {
-        if (webrtcGlobals.includes(subKey)) {
-          logger.info(`[LK_RTC_DIAGNOSTIC] Found potential global ${subKey} as a property of @livekit/rtc-node export '${key}'.`);
-          foundGlobals = true;
-        }
-      }
-    }
-  }
-  if (!foundGlobals) {
-    logger.warn('[LK_RTC_DIAGNOSTIC] Standard WebRTC global names (RTCPeerConnection, etc.) not found as direct exports or properties of direct exports in @livekit/rtc-node.');
-  }
-}
-
-try {
-  if (globalThis.RTCPeerConnection) {
-    const pc = new globalThis.RTCPeerConnection({ iceServers: [] });
-    logger.info('[LK_RTC_DIAGNOSTIC] Successfully created RTCPeerConnection instance from globalThis.');
-    pc.close();
-  } else {
-    logger.error('[LK_RTC_DIAGNOSTIC] globalThis.RTCPeerConnection is still not defined after requiring @livekit/rtc-node.');
-  }
-} catch (e) {
-  logger.error('[LK_RTC_DIAGNOSTIC] Failed to create RTCPeerConnection instance from globalThis:', e);
-}
-// End LiveKit RTC Diagnostic Block
-// Assuming livekit-client can be used in Node.js environment for the bot's client-side room interactions
-// You might need to install it: npm install livekit-client
-// Or use parts of livekit-server-sdk if appropriate for a non-media-participating orchestrator bot.
-// For a bot that sends/receives audio, livekit-client is typical.
-const { Room, RoomEvent, RemoteParticipant, RemoteTrack, RemoteTrackPublication } = require('livekit-client'); 
+// Use LiveKit components directly from @livekit/rtc-node for Node.js environment
+const { Room, RoomEvent, RemoteParticipant, Track, RemoteTrackPublication } = require('@livekit/rtc-node'); 
 
 class LLMBot {
   constructor() {
