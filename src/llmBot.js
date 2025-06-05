@@ -1,4 +1,4 @@
-require('@livekit/rtc'); // Polyfill for WebRTC in Node.js via LiveKit
+require('@livekit/rtc-node'); // Polyfill for WebRTC in Node.js via LiveKit
 
 const { OpenAI } = require('openai');
 const logger = require('./utils/logger');

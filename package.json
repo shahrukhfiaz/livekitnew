@@ -19,7 +19,7 @@
     "winston": "^3.10.0",
     "ws": "^8.14.2",
     "livekit-client": "^2.0.5",
-    "@livekit/rtc": "^1.0.1"
+    "@livekit/rtc-node": "^0.13.14"
   },
   "devDependencies": {
     "nodemon": "^3.1.4"
