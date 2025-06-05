@@ -2,27 +2,45 @@ const logger = require('./utils/logger');
 const { OpenAI } = require('openai');
 
 // LiveKit RTC Diagnostic Block
-const lkrtc = require('@livekit/rtc-node'); // Polyfill for WebRTC in Node.js via LiveKit
+const lkrtc = require('@livekit/rtc-node');
 logger.info(`[LK_RTC_DIAGNOSTIC] Loaded @livekit/rtc-node module. Type: ${typeof lkrtc}`);
+
 if (lkrtc && typeof lkrtc === 'object') {
-  logger.info(`[LK_RTC_DIAGNOSTIC] @livekit/rtc-node exports: ${Object.keys(lkrtc).join(', ')}`);
-  if (lkrtc.RTCPeerConnection) {
-    logger.info('[LK_RTC_DIAGNOSTIC] RTCPeerConnection IS available as a direct export from @livekit/rtc-node.');
-  } else {
-    logger.warn('[LK_RTC_DIAGNOSTIC] RTCPeerConnection is NOT available as a direct export from @livekit/rtc-node.');
+  const exports = Object.keys(lkrtc);
+  logger.info(`[LK_RTC_DIAGNOSTIC] @livekit/rtc-node exports: ${exports.join(', ')}`);
+
+  const webrtcGlobals = ['RTCPeerConnection', 'RTCSessionDescription', 'RTCIceCandidate'];
+  let foundGlobals = false;
+
+  for (const key of exports) {
+    if (webrtcGlobals.includes(key)) {
+      logger.info(`[LK_RTC_DIAGNOSTIC] Found potential global ${key} as a direct export of @livekit/rtc-node.`);
+      foundGlobals = true;
+    }
+    if (lkrtc[key] && typeof lkrtc[key] === 'object') {
+      for (const subKey of Object.keys(lkrtc[key])) {
+        if (webrtcGlobals.includes(subKey)) {
+          logger.info(`[LK_RTC_DIAGNOSTIC] Found potential global ${subKey} as a property of @livekit/rtc-node export '${key}'.`);
+          foundGlobals = true;
+        }
+      }
+    }
+  }
+  if (!foundGlobals) {
+    logger.warn('[LK_RTC_DIAGNOSTIC] Standard WebRTC global names (RTCPeerConnection, etc.) not found as direct exports or properties of direct exports in @livekit/rtc-node.');
   }
 }
 
 try {
   if (globalThis.RTCPeerConnection) {
     const pc = new globalThis.RTCPeerConnection({ iceServers: [] });
-    logger.info('[LK_RTC_DIAGNOSTIC] Successfully created RTCPeerConnection instance from globalThis via @livekit/rtc-node.');
-    pc.close(); // Clean up the test peer connection
+    logger.info('[LK_RTC_DIAGNOSTIC] Successfully created RTCPeerConnection instance from globalThis.');
+    pc.close();
   } else {
     logger.error('[LK_RTC_DIAGNOSTIC] globalThis.RTCPeerConnection is still not defined after requiring @livekit/rtc-node.');
   }
 } catch (e) {
-  logger.error('[LK_RTC_DIAGNOSTIC] Failed to create RTCPeerConnection instance from globalThis via @livekit/rtc-node:', e);
+  logger.error('[LK_RTC_DIAGNOSTIC] Failed to create RTCPeerConnection instance from globalThis:', e);
 }
 // End LiveKit RTC Diagnostic Block
 // Assuming livekit-client can be used in Node.js environment for the bot's client-side room interactions
